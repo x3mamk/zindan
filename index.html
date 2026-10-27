@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Zindan Demo</title>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
 :root{--bg:#14110f;--panel:#1f1a17;--ink:#e8dcc8;--dim:#8a7d6b;--gold:#d9a441;--red:#b3392f;--teal:#3f9c8f;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:Georgia,"Times New Roman",serif;overflow:hidden}
@@ -86,6 +87,14 @@ button:hover:not(:disabled){filter:brightness(1.12);transform:translateY(-1px)}
 #sellz{margin:8px 10px 0;padding:10px;border:2px dashed #6b4a14;border-radius:8px;text-align:center;font-size:12px;color:var(--dim)}
 .chr.sel{outline:2px solid var(--cc);box-shadow:0 0 18px var(--cc)}.chr .st{color:#ffd54a;font-size:12px}
 .sk6{display:grid;grid-template-columns:1fr 1fr;gap:1px 8px;font-size:11px;text-align:left;margin-top:4px}.sk6 i{font-style:normal;white-space:nowrap}
+#lobby{position:absolute;inset:0;z-index:7;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:20px;overflow:auto;background:radial-gradient(ellipse at 50% 15%,rgba(52,32,20,.98),rgba(8,6,5,.99))}
+#lobby h1{font-family:Cinzel,Georgia,serif;font-size:36px;letter-spacing:.2em;text-transform:uppercase;margin:0;background:linear-gradient(#fff0b8,#c58a26);-webkit-background-clip:text;background-clip:text;color:transparent}
+#lobby p{margin:0;color:var(--dim)}
+#lobby input,#lobby select{font:inherit;background:#2a221d;color:var(--ink);border:1px solid #4a3c31;padding:8px;border-radius:4px}
+.code{font-family:Cinzel,Georgia,serif;font-size:54px;letter-spacing:.35em;color:var(--gold);padding-left:.35em}
+.lpl{display:flex;flex-direction:column;gap:6px;min-width:min(320px,90vw)}
+.lp{background:#241d18;padding:8px 12px;border-radius:6px;text-align:left}.lp small{color:var(--dim)}
+.lmsg{color:#ff9a6a;min-height:18px}
 .grid.chars{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));width:min(940px,100%)}
 </style>
 </head>
@@ -98,7 +107,7 @@ button:hover:not(:disabled){filter:brightness(1.12);transform:translateY(-1px)}
 <div id="bag"><h3>Çanta</h3><div id="bgrid"></div><div id="bdrop">Yere at (eşyayı buraya sürükle)</div><small>Sürükle: yer değiştir · Sağ tık: yere at · Sarı çerçeveli ilk 4 slot güvenli</small></div>
 <div id="tip"></div>
 <canvas id="mm" width="520" height="416"></canvas>
-<div id="top"></div><div id="clk"></div><div id="bn"></div><div id="shop"></div><div id="chest"></div><button id="mute" title="Ses (M)">♪</button>
+<div id="top"></div><div id="clk"></div><div id="bn"></div><div id="shop"></div><div id="chest"></div><div id="lobby"></div><button id="mute" title="Ses (M)">♪</button>
 <div id="info"></div>
 <div id="msg"><h1>Zindan Demo</h1><p>Sağ tık: yürü. Q W E R tuşlarını basılı tut: menzil ekranda görünür. Tuşu bırakmadan sol tıkla, yetenek oraya kullanılır. D (atılış) ve F (şifa) tuşa basılır basılmaz çalışır. Temel saldırı yok, her şey 6 yetenekle.</p><p>Görüş alanın dışı karanlık. Yeşil işaret checkpoint, altın işaret zindan çıkışı. 3 can hakkın var.</p><button id="go">Zindana gir</button></div>
 <script>
@@ -191,7 +200,7 @@ function gen(){
 }
 function start(){
  SK=chSK();
- R=rs(Date.now());
+ R=rs(MPSEED||Date.now());
  W=D.k?300:50+10*D.lv;H=D.k?256:34+6*D.lv;
  const {m,rooms}=gen();
  const first=rooms[0],last=D.lv>=3?rooms.slice(1).reduce((a,b)=>a.w*a.h>b.w*b.h?a:b):rooms[rooms.length-1];
@@ -814,6 +823,106 @@ function placeRT(){
  r.tot=1;G.rts.push({r,x:p.x,y:p.y,t:180});G.rtc--;sfx('totem');
  G.en.forEach(e=>{if(e.trav&&e.home===r&&!e.dead){const c=G.qr[e.q].filter(o=>!o.tot);if(c.length)e.home=c[R()*c.length|0]}});
 }
+let MPSEED=null;
+const LB=document.getElementById('lobby'),MPC='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const MP={st:'off',host:false,peer:null,conns:[],hc:null,code:'',players:[],msg:'',pt:0};
+function escH(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function mpCode(){let s='';for(let i=0;i<5;i++)s+=MPC[Math.random()*MPC.length|0];return s}
+function mpLeave(){
+ try{MP.conns.forEach(c=>c.close());if(MP.hc)MP.hc.close();if(MP.peer)MP.peer.destroy()}catch(e){}
+ clearInterval(MP.pt);MP.st='off';MP.host=false;MP.peer=null;MP.conns=[];MP.hc=null;MP.players=[];MP.code='';
+}
+function openLobby(){MP.msg='';if(typeof Peer==='undefined')MP.msg='Bağlantı kütüphanesi yüklenemedi (internet yok ya da engelli).';if(MP.st==='off')MP.st='home';LB.style.display='flex';renderLobby()}
+function closeLobby(){mpLeave();LB.style.display='none'}
+function lobbyList(){
+ const l=document.getElementById('lpl'),n=document.getElementById('lcnt');
+ if(l)l.innerHTML=MP.players.map(p=>{const c=CHARS.find(x=>x.id===p.ch)||CHARS[0];return `<div class='lp' style='border-left:4px solid ${c.col}'><b>${escH(p.name)}</b> <small>${c.n}${p.id==='h'?' · Host':''}${p.ms?' · '+p.ms+' ms':''}</small></div>`}).join('');
+ if(n)n.textContent='Arkadaşların bu kodla katılsın · '+MP.players.length+'/4 kişi';
+}
+function renderLobby(){
+ const chs=CHARS.map(c=>`<option value='${c.id}'${S.ch===c.id?' selected':''}>${c.n}</option>`).join('');
+ const lib=typeof Peer!=='undefined',busy=MP.st==='connecting';
+ let body='';
+ if(MP.st==='room'){
+  body=`<div class='code'>${MP.code}</div><small id='lcnt'></small><div class='lpl' id='lpl'></div><div class='row'>Karakter <select id='lch'>${chs}</select></div><div class='row'>${MP.host?`<button id='mps'>Oyunu Başlat</button>`:`<small>Host başlatmayı bekliyor…</small>`}</div>`;
+ }else{
+  body=`<div class='row'>Adın <input id='lnm' maxlength='16' value=''> Karakter <select id='lch'>${chs}</select></div><div class='row'><button id='mph'${lib&&!busy?'':' disabled'}>Oda Kur</button></div><div class='row'><input id='lcode' maxlength='6' placeholder='ODA KODU' style='text-transform:uppercase;width:130px'><button id='mpj'${lib&&!busy?'':' disabled'}>Katıl</button></div>`;
+ }
+ LB.innerHTML=`<h1>Çok Oyunculu</h1><p>Köşk modu · 2-4 kişi</p>${body}<div class='lmsg'>${escH(MP.msg)}</div><div class='row'><button id='mpb'>${MP.st==='room'||busy?'Odadan ayrıl':'Geri'}</button></div>`;
+ const n=document.getElementById('lnm');if(n)n.value=S.name;
+ lobbyList();
+}
+function mpBroadcast(){
+ const m={t:'lobby',players:MP.players.map(p=>({id:p.id,name:p.name,ch:p.ch,ms:p.ms}))};
+ MP.conns.forEach(c=>{try{c.open&&c.send(m)}catch(e){}});lobbyList();
+}
+function mpSelf(){
+ if(MP.st!=='room')return;
+ if(MP.host){const p=MP.players[0];p.name=S.name;p.ch=S.ch;mpBroadcast()}
+ else if(MP.hc&&MP.hc.open)MP.hc.send({t:'hello',name:S.name,ch:S.ch});
+}
+function mpHost(tries){
+ tries=tries||0;if(typeof Peer==='undefined')return;
+ mpLeave();MP.code=mpCode();MP.host=true;MP.st='connecting';MP.msg='Oda kuruluyor…';renderLobby();
+ const p=new Peer('zdn1-'+MP.code);MP.peer=p;
+ p.on('open',()=>{
+  MP.st='room';MP.msg='';MP.players=[{id:'h',name:S.name,ch:S.ch,ms:0}];renderLobby();
+  MP.pt=setInterval(()=>{MP.conns.forEach(c=>{try{c.open&&c.send({t:'ping',ts:Date.now()})}catch(e){}});mpBroadcast()},2000);
+ });
+ p.on('error',e=>{if(e.type==='unavailable-id'&&tries<5){mpHost(tries+1);return}MP.msg='Hata: '+e.type;mpLeave();MP.st='home';renderLobby()});
+ p.on('connection',c=>{
+  c.on('open',()=>{
+   if(MP.conns.length>=3){try{c.send({t:'full'})}catch(e){}setTimeout(()=>c.close(),300);return}
+   MP.conns.push(c);
+  });
+  c.on('data',d=>{
+   if(!d||!MP.conns.includes(c))return;
+   if(d.t==='hello'){let pl=MP.players.find(x=>x.id===c.peer);if(!pl){pl={id:c.peer,ms:0};MP.players.push(pl)}pl.name=String(d.name||'Oyuncu').slice(0,16);pl.ch=CHARS.find(x=>x.id===d.ch)?d.ch:CHARS[0].id;mpBroadcast()}
+   else if(d.t==='pong'){const pl=MP.players.find(x=>x.id===c.peer);if(pl)pl.ms=Math.max(1,Date.now()-d.ts)}
+  });
+  c.on('close',()=>{MP.conns=MP.conns.filter(x=>x!==c);MP.players=MP.players.filter(x=>x.id!==c.peer);if(MP.st==='room')mpBroadcast()});
+ });
+}
+function mpJoin(code){
+ if(typeof Peer==='undefined')return;
+ code=String(code||'').trim().toUpperCase();
+ if(code.length<4){MP.msg='Oda kodunu yaz.';renderLobby();return}
+ mpLeave();MP.code=code;MP.st='connecting';MP.msg='Bağlanılıyor…';renderLobby();
+ const to=setTimeout(()=>{if(MP.st==='connecting'){mpLeave();MP.st='home';MP.msg='Bağlantı zaman aşımına uğradı.';renderLobby()}},15000);
+ const p=new Peer();MP.peer=p;
+ p.on('error',e=>{clearTimeout(to);const m=e.type==='peer-unavailable'?'Oda bulunamadı.':'Hata: '+e.type;mpLeave();MP.st='home';MP.msg=m;renderLobby()});
+ p.on('open',()=>{
+  const c=p.connect('zdn1-'+code,{reliable:true});MP.hc=c;
+  c.on('open',()=>{clearTimeout(to);MP.st='room';MP.msg='';renderLobby();c.send({t:'hello',name:S.name,ch:S.ch})});
+  c.on('data',d=>{
+   if(!d)return;
+   if(d.t==='lobby'){MP.players=d.players;lobbyList()}
+   else if(d.t==='ping')c.send({t:'pong',ts:d.ts});
+   else if(d.t==='full'){clearTimeout(to);mpLeave();MP.st='home';MP.msg='Oda dolu (en fazla 4 kişi).';renderLobby()}
+   else if(d.t==='start')mpStart(d.seed);
+  });
+  c.on('close',()=>{if(MP.st==='room'){mpLeave();MP.st='home';MP.msg='Host bağlantısı koptu.';renderLobby()}});
+ });
+}
+function mpStartHost(){
+ const seed=Date.now()%1000000000;
+ MP.conns.forEach(c=>{try{c.open&&c.send({t:'start',seed})}catch(e){}});
+ mpStart(seed);
+}
+function mpStart(seed){
+ LB.style.display='none';msg.style.display='none';
+ MPSEED=seed;D=CL[2].ds[0];selD=D;start();MPSEED=null;
+ G.ft.push({x:G.p.x,y:G.p.y-30,t:5,txt:'Test: aynı harita (birlikte oynama sonraki aşamada)',col:'#ffd54a'});
+}
+LB.oninput=e=>{if(e.target.id==='lnm'){S.name=e.target.value.slice(0,16);save()}};
+LB.onchange=e=>{if(e.target.id==='lch'){S.ch=e.target.value;save();mpSelf()}};
+LB.onclick=e=>{
+ const b=e.target.closest('button');if(!b||b.disabled)return;sfx('click');
+ if(b.id==='mph')mpHost();
+ else if(b.id==='mpj')mpJoin(document.getElementById('lcode').value);
+ else if(b.id==='mps')mpStartHost();
+ else if(b.id==='mpb'){if(MP.st==='room'||MP.st==='connecting'){mpLeave();MP.st='home';MP.msg='';renderLobby()}else closeLobby()}
+};
 function pickType(){
  const UNL=[[0],[1,6],[2,7],[3,8],[4,9,10],[5,11]],L=Math.min(G.el,6),fr=Math.min(1,(G.tm-(L-1)*300)/300),pool=[];
  for(let l=0;l<L;l++)UNL[l].forEach(t=>pool.push([t,l===L-1&&L>1?.15+.85*fr:1+.4*G.sd*(l>=3?1:0)]));
@@ -1034,7 +1143,7 @@ function menu(){
  const tabs=CL.map((c,i)=>`<button class='tab${i===selC?' on':''}' data-c='${i}'>${c.n}</button>`).join('');
  const dg=CL[selC].ds.map(d=>`<button class='dg${selD===d?' on':''}' data-d='${d.lv}'${!d.k&&d.lv>S.level+1?' disabled':''}>${!d.k&&d.lv>S.level+1?'🔒 ':''}Sv.${d.lv} ${d.n}<br><small>${d.d}</small></button>`).join('');
  msg.style.display='flex';
- msg.innerHTML=`<h1>Zindan</h1><div class='row'>Kullanıcı adı <input id='nm' maxlength='16'> Zindan seviyen: <b>${S.level}</b></div><h3>Karakter seç</h3><div class='grid chars'>${chars()}</div><h3>Zindan seç (en fazla seviyen+1)</h3><div class='row'>${tabs}</div><div class='row'>${dg}</div><button id='play'>Zindana gir</button>`;
+ msg.innerHTML=`<h1>Zindan</h1><div class='row'>Kullanıcı adı <input id='nm' maxlength='16'> Zindan seviyen: <b>${S.level}</b></div><h3>Karakter seç</h3><div class='grid chars'>${chars()}</div><h3>Zindan seç (en fazla seviyen+1)</h3><div class='row'>${tabs}</div><div class='row'>${dg}</div><button id='play'>Zindana gir</button><button id='mpbtn'>Çok Oyunculu (Köşk)</button>`;
  const nm=document.getElementById('nm');nm.value=S.name;
  nm.oninput=e=>{S.name=e.target.value.slice(0,16);save()};
 }
@@ -1044,6 +1153,7 @@ msg.onclick=e=>{
  else if(s.ch){S.ch=s.ch;save()}
  else if(s.c)selC=+s.c;
  else if(s.d)selD=CL[selC].ds.find(d=>d.lv==s.d);
+ else if(b.id==='mpbtn'){openLobby();return}
  else if(b.id==='play'){msg.style.display='none';D=selD;start();return}
  if(msg.querySelector('#nm'))menu();
 };
